@@ -14,7 +14,7 @@ launch, Escape (or the window's close button) to quit.
 ```sh
 make              # builds build/srun (also generates the xdg-shell protocol)
 make run          # build and launch srun
-sudo make install # installs to /usr/local/bin/srun (PREFIX overridable)
+make install    # installs to ~/.local/bin/srun (PREFIX overridable; no root needed)
 ```
 
 Dependencies (auto-detected via `pkg-config`): `wayland-client`, `xkbcommon`,

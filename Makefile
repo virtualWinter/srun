@@ -28,7 +28,7 @@ SRCS = $(wildcard $(SRC_DIR)/*.c)
 OBJS = $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o) $(BUILD_DIR)/xdg-shell-protocol.o
 TARGET = $(BUILD_DIR)/srun
 
-PREFIX    ?= /usr/local
+PREFIX    ?= $(HOME)/.local
 DESTDIR   ?=
 BINDIR     = $(DESTDIR)$(PREFIX)/bin
 
@@ -62,9 +62,9 @@ run: $(TARGET)
 	$(TARGET)
 
 install: $(TARGET)
-	install -Dm755 $(TARGET) $(BINDIR)/$(TARGET)
+	install -Dm755 $(TARGET) $(BINDIR)/$(notdir $(TARGET))
 
 uninstall:
-	rm -f $(BINDIR)/$(TARGET)
+	rm -f $(BINDIR)/$(notdir $(TARGET))
 
 .PHONY: all clean run install uninstall
