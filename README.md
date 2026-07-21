@@ -121,12 +121,13 @@ text = #d2d6e1
 value = #8c92a6
 caret = #d9e5ff
 term = #ffa95c
+radius = 14
 ```
 
 With no file present, srun uses its built-in palette (shown above). Any key
 you set there also changes ssettings, and vice versa — see the ssettings
 README for the full key list (`bg`, `border`, `title`, `hint`, `sep`, `sel`,
-`label`, `text`, `value`, `caret`, `term`, …).
+`label`, `text`, `value`, `caret`, `term`, `radius`, …).
 
 ## Integrating with swm
 

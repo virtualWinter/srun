@@ -46,7 +46,14 @@ static int parse_hex(const char *s, Color *c) {
 	return 1;
 }
 
-static void set_color(const char *key, const char *val) {
+static void set_value(const char *key, const char *val) {
+	/* non-colour settings */
+	if (!strcmp(key, "radius")) {
+		int r = atoi(val);
+		if (r >= 0) theme.radius = r;
+		return;
+	}
+	/* colour settings */
 	Color c;
 	if (!parse_hex(val, &c)) return;
 	if      (!strcmp(key, "bg"))     theme.bg = c;
@@ -77,6 +84,7 @@ void load_theme(void) {
 	theme.value  = (Color){0.55, 0.57, 0.65, 1.0};
 	theme.caret  = (Color){0.85, 0.90, 1.0,  1.0};
 	theme.term   = (Color){1.0,  0.66, 0.36, 1.0};
+	theme.radius = 14;
 
 	char path[PATH_MAX];
 	snprintf(path, sizeof path, "%.*s/swm/theme.conf", (int)(sizeof(path) - 16), xdg_config());
@@ -102,7 +110,7 @@ void load_theme(void) {
 		char *eq = strchr(p, '=');
 		if (!eq) continue;
 		*eq = 0;
-		set_color(trim(p), trim(eq + 1));
+		set_value(trim(p), trim(eq + 1));
 	}
 	fclose(f);
 }

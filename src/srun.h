@@ -35,6 +35,7 @@ typedef struct { double r, g, b, a; } Color;
 
 typedef struct {
 	Color bg, border, title, hint, sep, sel, label, text, value, caret, term;
+	int radius;                     /* corner radius in pixels (default 14) */
 } Theme;
 
 extern Theme theme;

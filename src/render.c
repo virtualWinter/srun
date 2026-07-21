@@ -36,7 +36,8 @@ void render(void) {
 	cairo_set_operator(c, CAIRO_OPERATOR_OVER);
 
 	/* panel background + border */
-	round_rect(c, 0, 0, W, H, 14);
+	int rr = theme.radius;
+	round_rect(c, 0, 0, W, H, rr);
 	set_rgba(c, &theme.bg);
 	cairo_fill(c);
 	set_rgba(c, &theme.border);
@@ -91,7 +92,8 @@ void render(void) {
 		int y = HEADER_H + i * ROW_H;
 		App *a = filtered[idx];
 		if (idx == sel) {
-			round_rect(c, MARGIN / 2, y + 3, W - MARGIN, ROW_H - 6, 6);
+			int sr = rr > 6 ? 6 : rr / 2;
+			round_rect(c, MARGIN / 2, y + 3, W - MARGIN, ROW_H - 6, sr);
 			set_rgba(c, &theme.sel);
 			cairo_fill(c);
 		}
