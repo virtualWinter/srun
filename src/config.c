@@ -30,7 +30,12 @@ static void add_pattern(char ***list, int *n, int *cap, const char *s) {
 	if (L == 0) return;
 	char *d = strndup(s, L);
 	if (!d) return;
-	if (*n == *cap) { *cap = *cap ? *cap * 2 : 8; *list = realloc(*list, *cap * sizeof(char *)); }
+	if (*n == *cap) {
+		*cap = *cap ? *cap * 2 : 8;
+		char **new_list = realloc(*list, *cap * sizeof(char *));
+		if (!new_list) { *cap = *n; free(d); return; }
+		*list = new_list;
+	}
 	(*list)[(*n)++] = d;
 }
 
