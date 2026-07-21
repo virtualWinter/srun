@@ -104,12 +104,21 @@ static void kb_keymap(void *data, struct wl_keyboard *kb, uint32_t format,
 	(void)data; (void)kb; (void)format;
 	if (xkb_state) xkb_state_unref(xkb_state);
 	if (xkb_km)    xkb_keymap_unref(xkb_km);
+	xkb_km = NULL;
+	xkb_state = NULL;
+	if (size == 0) { close(fd); return; }
 	void *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+	if (map == MAP_FAILED) {
+		fprintf(stderr, "srun: failed to mmap keymap\n");
+		close(fd);
+		return;
+	}
 	xkb_km = xkb_keymap_new_from_buffer(xkb_ctx, map, size - 1,
 		XKB_KEYMAP_FORMAT_TEXT_V1, 0);
 	if (!xkb_km)
 		fprintf(stderr, "srun: failed to parse keyboard keymap\n");
-	xkb_state = xkb_state_new(xkb_km);
+	else
+		xkb_state = xkb_state_new(xkb_km);
 	munmap(map, size);
 	close(fd);
 }
