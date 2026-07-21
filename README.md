@@ -78,32 +78,63 @@ built-in fallback list is used so the launcher is never empty.
 
 To hide or show specific apps, create a config file at
 `$XDG_CONFIG_HOME/srun/srun.conf` (default `~/.config/srun/srun.conf`). A
-default, fully-commented file is written there on first run. Patterns match
-case-insensitively against the app's **Name**, its **`.desktop` filename**, or
-its **executable**:
+default, fully-commented file is written there on first run. The file is
+organized into sections:
 
 ```ini
-# hide specific apps
+[filter]
+
+# exclude = hides a matching app
 exclude = nm-applet
 exclude = gcr-prompter
 
-# if any include lines exist, ONLY matching apps are shown
+# include = if any include lines exist, ONLY matching apps are shown
 #include = firefox
 #include = terminal
 ```
 
-`exclude` wins over `include`. This is useful for trimming applets, control
-centers, and other entries your distro ships but you don't want in the menu.
+Patterns match case-insensitively against the app's **Name**, its
+**`.desktop` filename**, or its **executable**. `exclude` wins over `include`.
+This is useful for trimming applets, control centers, and other entries your
+distro ships but you don't want in the menu.
 
 Launching parses the desktop entry's `Exec=` line (quote-aware, with `%`
 field codes stripped) and runs it directly; if the command isn't found it
 falls back to `sh -c "Exec"`.
 
+## Theme (shared with ssettings)
+
+srun and ssettings share one global colour theme file,
+`~/.config/swm/theme.conf`. The file is organized into sections:
+
+```ini
+[colors]
+
+bg = #1a1a24
+border = #88b6fc
+title = #ebf0fa
+hint = #9a9eb3
+sep = #595e73
+sel = #88b6fc38
+label = #fbfdff
+text = #d2d6e1
+value = #8c92a6
+caret = #d9e5ff
+term = #ffa95c
+```
+
+With no file present, srun uses its built-in palette (shown above). Any key
+you set there also changes ssettings, and vice versa — see the ssettings
+README for the full key list (`bg`, `border`, `title`, `hint`, `sep`, `sel`,
+`label`, `text`, `value`, `caret`, `term`, …).
+
 ## Integrating with swm
 
 swm's default config already binds the launcher:
 
-```
+```ini
+[bindings]
+
 SUPER+d = exec srun
 ```
 

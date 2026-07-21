@@ -169,6 +169,9 @@ static void ensure_dir(const char *path) {
 	if (p) { *p = 0; mkdir(tmp, 0755); }
 }
 
+/* Config sections */
+enum { SECTION_NONE, SECTION_FILTER };
+
 void load_config(void) {
 	char buf[1024];
 	const char *xc = getenv("XDG_CONFIG_HOME");
@@ -184,6 +187,9 @@ void load_config(void) {
 			fprintf(f, "# srun configuration\n");
 			fprintf(f, "# Hide or show apps by matching their Name, .desktop filename,\n");
 			fprintf(f, "# or executable (case-insensitive substring match).\n");
+			fprintf(f, "#\n");
+			fprintf(f, "[filter]\n");
+			fprintf(f, "\n");
 			fprintf(f, "# exclude = hides a matching app\n");
 			fprintf(f, "# include = if any include lines exist, ONLY matching apps are shown\n");
 			fprintf(f, "#\n");
@@ -194,10 +200,26 @@ void load_config(void) {
 		return;
 	}
 	char *line = NULL; size_t n = 0;
+	int section = SECTION_FILTER;
 	while (getline(&line, &n, f) > 0) {
 		line[strcspn(line, "\n")] = 0;
-		if (!strncmp(line, "exclude =", 9)) add_pattern(&excludes, &nexcludes, &excl_cap, line + 9);
-		else if (!strncmp(line, "include =", 9)) add_pattern(&includes, &nincludes, &incl_cap, line + 9);
+		char *p = line;
+		while (*p && isspace((unsigned char)*p)) p++;
+		if (*p == '#' || *p == 0) continue;
+		if (*p == '[') {
+			char *end = strchr(p, ']');
+			if (!end) continue;
+			*end = 0;
+			char *name = p + 1;
+			while (*name && isspace((unsigned char)*name)) name++;
+			if (!strcasecmp(name, "filter"))
+				section = SECTION_FILTER;
+			continue;
+		}
+		if (section == SECTION_FILTER) {
+			if (!strncmp(p, "exclude =", 9)) add_pattern(&excludes, &nexcludes, &excl_cap, p + 9);
+			else if (!strncmp(p, "include =", 9)) add_pattern(&includes, &nincludes, &incl_cap, p + 9);
+		}
 	}
 	free(line);
 	fclose(f);
