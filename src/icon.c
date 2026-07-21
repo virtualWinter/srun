@@ -38,9 +38,16 @@ static int read_gtk_icon_theme(char *out, size_t n) {
 	return found;
 }
 
+/* Reject icon names that could traverse directories or reach absolute paths. */
+static int icon_name_safe(const char *name) {
+	if (name[0] == '/') return 0;
+	if (strstr(name, "..")) return 0;
+	return 1;
+}
+
 /* Find a PNG for a theme icon name; returns a malloc'd path or NULL. */
 static char *icon_path_for(const char *name) {
-	if (!name || !*name) return NULL;
+	if (!name || !*name || !icon_name_safe(name)) return NULL;
 	char theme[128];
 	if (!read_gtk_icon_theme(theme, sizeof theme)) strcpy(theme, "hicolor");
 
