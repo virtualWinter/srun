@@ -68,7 +68,9 @@ void app_add(const char *name, const char *exec, const char *desktop, const char
 	}
 	if (napps == apps_cap) {
 		apps_cap = apps_cap ? apps_cap * 2 : 64;
-		apps = realloc(apps, apps_cap * sizeof(App));
+		App *new_apps = realloc(apps, apps_cap * sizeof(App));
+		if (!new_apps) return;
+		apps = new_apps;
 	}
 	apps[napps].name = strdup(name);
 	apps[napps].exec = strdup(exec);
@@ -190,7 +192,9 @@ static void load_bins(void) {
 			if (seen) continue;
 			if (nbins == bins_cap) {
 				bins_cap = bins_cap ? bins_cap * 2 : 256;
-				bins = realloc(bins, bins_cap * sizeof(App));
+				App *new_bins = realloc(bins, bins_cap * sizeof(App));
+				if (!new_bins) { bins_cap = nbins; continue; }
+				bins = new_bins;
 			}
 			App *a = &bins[nbins++];
 			a->name = strdup(de->d_name);
@@ -216,6 +220,7 @@ void rebuild(void) {
 		const char *q = input + 1;
 		int cap = nbins ? nbins : 1;
 		filtered = malloc(cap * sizeof(App *));
+		if (!filtered) { nfiltered = 0; return; }
 		for (int i = 0; i < nbins; i++)
 			if (ci_find(bins[i].name, q)) filtered[nfiltered++] = &bins[i];
 		return;
@@ -223,9 +228,11 @@ void rebuild(void) {
 
 	if (input_len == 0) {
 		filtered = malloc(sizeof(App *) * (napps ? napps : 1));
+		if (!filtered) { nfiltered = 0; return; }
 		for (int i = 0; i < napps; i++) filtered[nfiltered++] = &apps[i];
 	} else {
 		filtered = malloc(sizeof(App *) * (napps ? napps : 1));
+		if (!filtered) { nfiltered = 0; return; }
 		for (int i = 0; i < napps; i++)
 			if (ci_find(apps[i].name, input) || ci_find(apps[i].exec, input))
 				filtered[nfiltered++] = &apps[i];
