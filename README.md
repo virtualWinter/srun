@@ -147,7 +147,11 @@ edit `~/.config/swm/swm.conf`.
 ```
 src/srun.h                  Shared types, globals, and prototypes
 src/main.c                 Wayland/shell setup, shared client state, event loop
-src/apps.c                 Application list, .desktop parsing, config, launching, icons
+src/apps.c                 Desktop file parsing, application list, filtering
+src/config.c               User curation config (srun.conf parser)
+src/launch.c               Application launching and terminal detection
+src/icon.c                 GTK icon theme resolution and PNG loading
+src/theme.c                Global colour theme (shared with ssettings)
 src/render.c               Cairo rendering of the launcher window
 src/input.c                Keyboard and pointer handling, auto-repeat
 Makefile                   Build (into build/) + protocol generation + install

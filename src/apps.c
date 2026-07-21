@@ -1,4 +1,4 @@
-// apps.c - application list, .desktop parsing, user config, launching, icons.
+// apps.c - desktop file parsing, application list, and search filtering.
 
 #include "srun.h"
 
@@ -12,7 +12,7 @@
 #include <dirent.h>
 #include <stddef.h>
 
-/* ----- global application list (shared via srun.h) ----- */
+/* ----- global application list ----- */
 
 App   *apps = NULL;
 int    napps = 0, apps_cap = 0;
@@ -26,21 +26,18 @@ int    input_len = 0;
 static App   *bins = NULL;
 static int    nbins = 0, bins_cap = 0, bins_loaded = 0;
 
-/* ----- user curation lists (from $XDG_CONFIG_HOME/srun/srun.conf) ----- */
-static char **excludes = NULL; static int nexcludes = 0, excl_cap = 0;
-static char **includes = NULL; static int nincludes = 0, incl_cap = 0;
-
-static int ci_find(const char *hay, const char *needle); /* defined below */
-
-static void add_pattern(char ***list, int *n, int *cap, const char *s) {
-	while (*s == ' ' || *s == '\t') s++;
-	size_t L = strlen(s);
-	while (L && (s[L-1] == ' ' || s[L-1] == '\t')) L--;
-	if (L == 0) return;
-	char *d = strndup(s, L);
-	if (!d) return;
-	if (*n == *cap) { *cap = *cap ? *cap * 2 : 8; *list = realloc(*list, *cap * sizeof(char *)); }
-	(*list)[(*n)++] = d;
+/* case-insensitive substring match */
+static int ci_find(const char *hay, const char *needle) {
+	if (!hay) return 0;
+	if (!*needle) return 1;
+	for (; *hay; hay++) {
+		const char *h = hay, *n = needle;
+		while (*h && *n && tolower((unsigned char)*h) == tolower((unsigned char)*n)) {
+			h++; n++;
+		}
+		if (!*n) return 1;
+	}
+	return 0;
 }
 
 /* case-insensitive substring match against name, .desktop basename, or exec */
@@ -160,85 +157,7 @@ void load_apps(void) {
 	}
 }
 
-/* ----- config (user curation) ----- */
-
-static void ensure_dir(const char *path) {
-	char tmp[1024];
-	snprintf(tmp, sizeof tmp, "%s", path);
-	char *p = strrchr(tmp, '/');
-	if (p) { *p = 0; mkdir(tmp, 0755); }
-}
-
-/* Config sections */
-enum { SECTION_NONE, SECTION_FILTER };
-
-void load_config(void) {
-	char buf[1024];
-	const char *xc = getenv("XDG_CONFIG_HOME");
-	const char *home = getenv("HOME");
-	if (xc && *xc) snprintf(buf, sizeof buf, "%s/srun/srun.conf", xc);
-	else snprintf(buf, sizeof buf, "%s/.config/srun/srun.conf", home ? home : "");
-
-	FILE *f = fopen(buf, "r");
-	if (!f) {                       /* write a default config for the user to edit */
-		ensure_dir(buf);
-		f = fopen(buf, "w");
-		if (f) {
-			fprintf(f, "# srun configuration\n");
-			fprintf(f, "# Hide or show apps by matching their Name, .desktop filename,\n");
-			fprintf(f, "# or executable (case-insensitive substring match).\n");
-			fprintf(f, "#\n");
-			fprintf(f, "[filter]\n");
-			fprintf(f, "\n");
-			fprintf(f, "# exclude = hides a matching app\n");
-			fprintf(f, "# include = if any include lines exist, ONLY matching apps are shown\n");
-			fprintf(f, "#\n");
-			fprintf(f, "# exclude = nm-applet\n");
-			fprintf(f, "# exclude = gcr-prompter\n");
-			fclose(f);
-		}
-		return;
-	}
-	char *line = NULL; size_t n = 0;
-	int section = SECTION_FILTER;
-	while (getline(&line, &n, f) > 0) {
-		line[strcspn(line, "\n")] = 0;
-		char *p = line;
-		while (*p && isspace((unsigned char)*p)) p++;
-		if (*p == '#' || *p == 0) continue;
-		if (*p == '[') {
-			char *end = strchr(p, ']');
-			if (!end) continue;
-			*end = 0;
-			char *name = p + 1;
-			while (*name && isspace((unsigned char)*name)) name++;
-			if (!strcasecmp(name, "filter"))
-				section = SECTION_FILTER;
-			continue;
-		}
-		if (section == SECTION_FILTER) {
-			if (!strncmp(p, "exclude =", 9)) add_pattern(&excludes, &nexcludes, &excl_cap, p + 9);
-			else if (!strncmp(p, "include =", 9)) add_pattern(&includes, &nincludes, &incl_cap, p + 9);
-		}
-	}
-	free(line);
-	fclose(f);
-}
-
 /* ----- filtering ----- */
-
-static int ci_find(const char *hay, const char *needle) {
-	if (!hay) return 0;
-	if (!*needle) return 1;
-	for (; *hay; hay++) {
-		const char *h = hay, *n = needle;
-		while (*h && *n && tolower((unsigned char)*h) == tolower((unsigned char)*n)) {
-			h++; n++;
-		}
-		if (!*n) return 1;
-	}
-	return 0;
-}
 
 static int cmp_app_name(const void *a, const void *b) {
 	return strcmp(((const App *)a)->name, ((const App *)b)->name);
@@ -311,228 +230,4 @@ void rebuild(void) {
 			if (ci_find(apps[i].name, input) || ci_find(apps[i].exec, input))
 				filtered[nfiltered++] = &apps[i];
 	}
-}
-
-/* ----- launching ----- */
-
-/* Tokenize a .desktop Exec string (quote-aware), dropping % field codes. */
-static char **parse_exec(const char *s) {
-	char **argv = NULL;
-	size_t n = 0, cap = 0;
-	const char *p = s;
-	while (*p) {
-		while (*p && isspace((unsigned char)*p)) p++;
-		if (!*p) break;
-		char *tok = malloc(strlen(p) + 1);
-		size_t ti = 0; int inq = 0;
-		while (*p && (inq || !isspace((unsigned char)*p))) {
-			if (*p == '"') { inq = !inq; p++; continue; }
-			if (*p == '%') { p++; while (*p && !isspace((unsigned char)*p) && *p != '"') p++; continue; }
-			tok[ti++] = *p++;
-		}
-		tok[ti] = 0;
-		if (ti) {
-			if (n == cap) { cap = cap ? cap * 2 : 8; argv = realloc(argv, cap * sizeof(char *)); }
-			argv[n++] = tok;
-		}
-	}
-	if (n == cap) argv = realloc(argv, (n + 1) * sizeof(char *));
-	if (argv) argv[n] = NULL;
-	return argv;
-}
-
-void run_app(App *a) {
-	if (!a) return;
-	char **argv = parse_exec(a->exec);
-	pid_t pid = fork();
-	if (pid == 0) {
-		setsid();
-		if (argv && argv[0]) execvp(argv[0], argv);
-		execl("/bin/sh", "sh", "-c", a->exec, (char *)NULL);
-		_exit(127);
-	}
-	if (argv) { for (size_t i = 0; argv[i]; i++) free(argv[i]); free(argv); }
-	quit = 1;
-}
-
-/* ----- terminal detection / spawning ----- */
-
-static int cmd_exists(const char *cmd) {
-	if (strchr(cmd, '/')) return access(cmd, X_OK) == 0;
-	const char *path = getenv("PATH");
-	char *dup = strdup(path ? path : "/usr/local/bin:/usr/bin:/bin");
-	if (!dup) return 0;
-	char tmp[1024];
-	int found = 0;
-	for (char *tok = strtok(dup, ":"); tok && !found; tok = strtok(NULL, ":")) {
-		snprintf(tmp, sizeof tmp, "%s/%s", tok, cmd);
-		if (access(tmp, X_OK) == 0) found = 1;
-	}
-	free(dup);
-	return found;
-}
-
-static const char *terminals[] = {
-	"st", "alacritty", "kitty", "foot", "urxvt", "rxvt", "xterm",
-	"gnome-terminal", "konsole", "terminator", "lxterminal", "mate-terminal",
-	NULL
-};
-
-/* Pick an available terminal emulator, honoring $TERMINAL first. */
-static const char *find_terminal(void) {
-	const char *t = getenv("TERMINAL");
-	if (t && *t && cmd_exists(t)) return t;
-	for (int i = 0; terminals[i]; i++)
-		if (cmd_exists(terminals[i])) return terminals[i];
-	return NULL;
-}
-
-/* Most terminals accept -e; some DE terminals prefer --. */
-static const char *term_exec_flag(const char *term) {
-	if (!strcmp(term, "gnome-terminal") || !strcmp(term, "terminator") ||
-			!strcmp(term, "mate-terminal") || !strcmp(term, "lxterminal") ||
-			!strcmp(term, "xfce4-terminal"))
-		return "--";
-	return "-e";
-}
-
-/* The user's login shell, used to run terminal commands. */
-static const char *user_shell(void) {
-	const char *s = getenv("SHELL");
-	return (s && *s) ? s : "/bin/sh";
-}
-
-/* Open a new terminal window and run `cmd` inside it (the launcher strips the
- * leading '#' first). The command runs in the user's $SHELL and the terminal
- * stays open afterwards (drops to a shell) so output is visible. An empty
- * command just opens a shell. If no terminal is found we fall back to running
- * the command directly in the user's shell. */
-void run_in_terminal(const char *cmd) {
-	const char *term = find_terminal();
-	const char *shell = user_shell();
-	if (!term) {
-		pid_t pid = fork();
-		if (pid == 0) {
-			setsid();
-			execl(shell, shell, "-c", cmd ? cmd : "", (char *)NULL);
-			_exit(127);
-		}
-		quit = 1;
-		return;
-	}
-	char *argv[6];
-	int n = 0;
-	argv[n++] = (char *)term;
-	if (cmd && *cmd) {
-		size_t need = strlen(cmd) + strlen(shell) + 16;
-		char *combined = malloc(need);
-		snprintf(combined, need, "%s; exec %s", cmd, shell);
-		argv[n++] = (char *)term_exec_flag(term);
-		argv[n++] = (char *)shell;
-		argv[n++] = "-c";
-		argv[n++] = combined;
-	}
-	argv[n] = NULL;
-	pid_t pid = fork();
-	if (pid == 0) {
-		setsid();
-		execvp(argv[0], argv);
-		_exit(127);
-	}
-	quit = 1;
-}
-
-/* ----- icon loading ----- */
-
-/* Resolve the current GTK icon theme name from settings (fallback: hicolor). */
-static int read_gtk_icon_theme(char *out, size_t n) {
-	const char *xc = getenv("XDG_CONFIG_HOME");
-	const char *home = getenv("HOME");
-	char path[2048];
-	if (xc && *xc) snprintf(path, sizeof path, "%s/gtk-3.0/settings.ini", xc);
-	else snprintf(path, sizeof path, "%s/.config/gtk-3.0/settings.ini", home ? home : "");
-	FILE *f = fopen(path, "r");
-	if (!f) {
-		snprintf(path, sizeof path, "%s/.gtkrc-2.0", home ? home : "");
-		f = fopen(path, "r");
-		if (!f) return 0;
-	}
-	char *line = NULL; size_t len = 0; int found = 0;
-	while (getline(&line, &len, f) > 0) {
-		if (strstr(line, "gtk-icon-theme-name")) {
-			char *eq = strchr(line, '=');
-			if (eq) {
-				eq++;
-				while (*eq == ' ' || *eq == '\t' || *eq == '"') eq++;
-				size_t L = strlen(eq);
-				while (L && (eq[L-1]=='\n'||eq[L-1]=='\r'||eq[L-1]=='"'||eq[L-1]==' ')) eq[--L]=0;
-				if (L) { snprintf(out, n, "%.*s", (int)L, eq); found = 1; break; }
-			}
-		}
-	}
-	free(line); fclose(f);
-	return found;
-}
-
-/* Find a PNG for a theme icon name; returns a malloc'd path or NULL. */
-static char *icon_path_for(const char *name) {
-	if (!name || !*name) return NULL;
-	char theme[128];
-	if (!read_gtk_icon_theme(theme, sizeof theme)) strcpy(theme, "hicolor");
-
-	char bases[8][1024]; int nb = 0;
-	const char *xdg_data = getenv("XDG_DATA_HOME");
-	const char *home = getenv("HOME");
-	const char *data_dirs = getenv("XDG_DATA_DIRS");
-	if (xdg_data && *xdg_data) snprintf(bases[nb++], sizeof bases[0], "%s", xdg_data);
-	else if (home) snprintf(bases[nb++], sizeof bases[0], "%s/.local/share", home);
-
-	char dd[2048];
-	if (data_dirs && *data_dirs) snprintf(dd, sizeof dd, "%s", data_dirs);
-	else snprintf(dd, sizeof dd, "/usr/local/share:/usr/share");
-	char *tok = strtok(dd, ":");
-	while (tok && nb < 8) { snprintf(bases[nb++], sizeof bases[0], "%s", tok); tok = strtok(NULL, ":"); }
-
-	const char *sizes[] = {"48x48","64x64","32x32","256x256","128x128","96x96","scalable",NULL};
-	const char *sub[]   = {"apps","places","categories","devices","mimetypes","status","",NULL};
-	const char *themes[] = {theme, "hicolor", NULL};
-	char path[10240];
-	for (int t = 0; themes[t]; t++)
-		for (int b = 0; b < nb; b++)
-			for (int s = 0; sizes[s]; s++)
-				for (int u = 0; sub[u]; u++) {
-					if (sub[u][0])
-						snprintf(path, sizeof path, "%s/icons/%s/%s/%s/%s.png",
-							bases[b], themes[t], sizes[s], sub[u], name);
-					else
-						snprintf(path, sizeof path, "%s/icons/%s/%s/%s.png",
-							bases[b], themes[t], sizes[s], name);
-					if (access(path, R_OK) == 0) return strdup(path);
-				}
-	/* flat fallbacks */
-	for (int b = 0; b < nb; b++) {
-		snprintf(path, sizeof path, "%s/pixmaps/%s.png", bases[b], name);
-		if (access(path, R_OK) == 0) return strdup(path);
-		snprintf(path, sizeof path, "%s/icons/%s.png", bases[b], name);
-		if (access(path, R_OK) == 0) return strdup(path);
-	}
-	return NULL;
-}
-
-/* Load an icon into a cairo surface (the caller caches it on the App).
- * PNG files and theme icon names are supported; SVG is skipped (no rsvg
- * dependency). */
-cairo_surface_t *load_icon(const char *icon) {
-	if (!icon || !*icon) return NULL;
-	char *path = NULL;
-	if (icon[0] == '/') {
-		if (strstr(icon, ".png")) path = strdup(icon);
-	} else {
-		path = icon_path_for(icon);
-	}
-	if (!path) return NULL;
-	cairo_surface_t *s = cairo_image_surface_create_from_png(path);
-	free(path);
-	if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) { cairo_surface_destroy(s); return NULL; }
-	return s;
 }

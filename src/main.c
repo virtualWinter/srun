@@ -169,6 +169,7 @@ int main(void) {
 	load_config();
 	load_apps();
 	rebuild();
+	load_theme();
 
 	wl_display_roundtrip(display); /* receive initial configure + keymap */
 	dirty = 1;

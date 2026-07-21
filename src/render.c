@@ -37,9 +37,9 @@ void render(void) {
 
 	/* panel background + border */
 	round_rect(c, 0, 0, W, H, 14);
-	cairo_set_source_rgba(c, 0.10, 0.10, 0.14, 0.96);
+	set_rgba(c, &theme.bg);
 	cairo_fill(c);
-	cairo_set_source_rgba(c, 0.53, 0.71, 0.98, 1.0);
+	set_rgba(c, &theme.border);
 	cairo_set_line_width(c, 2);
 	cairo_stroke(c);
 
@@ -52,24 +52,24 @@ void render(void) {
 	char prompt[300];
 	snprintf(prompt, sizeof prompt, "%s %s", pfx, q);
 	cairo_move_to(c, MARGIN, HEADER_H / 2 + 7);
-	cairo_set_source_rgba(c, term_mode ? 1.0 : 0.92, term_mode ? 0.66 : 0.94,
-	                         term_mode ? 0.36 : 0.98, 1.0);
+	const Color *pc = term_mode ? &theme.term : &theme.title;
+	set_rgba(c, pc);
 	cairo_show_text(c, pfx);
 	cairo_show_text(c, " ");
-	cairo_set_source_rgba(c, 0.92, 0.94, 0.98, 1.0);
+	set_rgba(c, &theme.title);
 	cairo_show_text(c, q);
 
 	/* blinking caret */
 	cairo_text_extents_t ex;
 	cairo_text_extents(c, prompt, &ex);
 	if (time(NULL) % 2 == 0) {
-		cairo_set_source_rgba(c, 0.85, 0.90, 1.0, 1.0);
+		set_rgba(c, &theme.caret);
 		cairo_rectangle(c, MARGIN + ex.x_advance + 1, HEADER_H / 2 - 9, 2, 18);
 		cairo_fill(c);
 	}
 
 	/* separator */
-	cairo_set_source_rgba(c, 0.35, 0.37, 0.45, 0.7);
+	set_rgba(c, &theme.sep);
 	cairo_set_line_width(c, 1);
 	cairo_move_to(c, MARGIN, HEADER_H);
 	cairo_line_to(c, W - MARGIN, HEADER_H);
@@ -92,25 +92,24 @@ void render(void) {
 		App *a = filtered[idx];
 		if (idx == sel) {
 			round_rect(c, MARGIN / 2, y + 3, W - MARGIN, ROW_H - 6, 6);
-			cairo_set_source_rgba(c, 0.53, 0.71, 0.98, 0.22);
+			set_rgba(c, &theme.sel);
 			cairo_fill(c);
 		}
 		/* icon: loaded and cached on first paint */
 		if (a->icon && !a->icon_surf) a->icon_surf = load_icon(a->icon);
 		if (a->icon_surf) draw_icon(c, a->icon_surf, MARGIN, y + (ROW_H - ICON) / 2);
-		cairo_set_source_rgba(c, idx == sel ? 0.98 : 0.82,
-		                         idx == sel ? 0.99 : 0.84,
-		                         idx == sel ? 1.0 : 0.88, 1.0);
+		const Color *lc = (idx == sel) ? &theme.label : &theme.text;
+		set_rgba(c, lc);
 		cairo_move_to(c, text_x, y + 20);
 		cairo_show_text(c, a->name);
 		if (!term_mode) {
-			cairo_set_source_rgba(c, 0.55, 0.57, 0.65, 1.0);
+			set_rgba(c, &theme.value);
 			cairo_move_to(c, text_x + 200, y + 20);
 			cairo_show_text(c, a->exec);
 		}
 	}
 	if (nfiltered == 0) {
-		cairo_set_source_rgba(c, 0.6, 0.62, 0.7, 1.0);
+		set_rgba(c, &theme.hint);
 		cairo_move_to(c, MARGIN, HEADER_H + ROW_H / 2 + 6);
 		cairo_show_text(c, "no matches");
 	}

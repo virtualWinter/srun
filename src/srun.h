@@ -3,7 +3,8 @@
 
 /* Shared declarations for srun (a tiny rofi/dmenu-like Wayland launcher).
  * Types, the global client state, and function prototypes used across the
- * modules (main.c, apps.c, render.c, input.c). */
+ * modules (main.c, apps.c, config.c, launch.c, icon.c, render.c, input.c,
+ * theme.c). */
 
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
@@ -27,6 +28,23 @@ typedef struct {
 	char *icon;
 	cairo_surface_t *icon_surf;   /* loaded lazily by render(), cached here */
 } App;
+
+/* ----- global colour theme (defined in theme.c; shared with ssettings via
+   ~/.config/swm/theme.conf) ----- */
+typedef struct { double r, g, b, a; } Color;
+
+typedef struct {
+	Color bg, border, title, hint, sep, sel, label, text, value, caret, term;
+} Theme;
+
+extern Theme theme;
+
+/* set a cairo source colour from a Color (inline so every TU gets it) */
+static inline void set_rgba(cairo_t *c, const Color *col) {
+	cairo_set_source_rgba(c, col->r, col->g, col->b, col->a);
+}
+
+void load_theme(void);
 
 /* ----- global client state ----- */
 
@@ -62,6 +80,12 @@ extern int    sel, scroll;
 extern char   input[256];
 extern int    input_len;
 
+/* user curation patterns (defined in config.c) */
+extern char **excludes;
+extern int    nexcludes, excl_cap;
+extern char **includes;
+extern int    nincludes, incl_cap;
+
 /* repeat state shared with the event loop (defined in input.c) */
 extern int  repeat_active;
 extern long repeat_at;
@@ -69,11 +93,18 @@ extern long repeat_at;
 /* ----- prototypes ----- */
 
 /* apps.c */
-void load_config(void);
 void load_apps(void);
 void rebuild(void);
+void app_add(const char *name, const char *exec, const char *desktop, const char *icon);
+
+/* config.c */
+void load_config(void);
+
+/* launch.c */
 void run_app(App *a);
 void run_in_terminal(const char *cmd);
+
+/* icon.c */
 cairo_surface_t *load_icon(const char *icon);
 
 /* render.c */
