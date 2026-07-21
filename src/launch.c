@@ -18,6 +18,7 @@ static char **parse_exec(const char *s) {
 		while (*p && isspace((unsigned char)*p)) p++;
 		if (!*p) break;
 		char *tok = malloc(strlen(p) + 1);
+		if (!tok) goto fail;
 		size_t ti = 0; int inq = 0;
 		while (*p && (inq || !isspace((unsigned char)*p))) {
 			if (*p == '"') { inq = !inq; p++; continue; }
@@ -25,14 +26,26 @@ static char **parse_exec(const char *s) {
 			tok[ti++] = *p++;
 		}
 		tok[ti] = 0;
-		if (ti) {
-			if (n == cap) { cap = cap ? cap * 2 : 8; argv = realloc(argv, cap * sizeof(char *)); }
-			argv[n++] = tok;
+		if (!ti) { free(tok); continue; }
+		if (n == cap) {
+			cap = cap ? cap * 2 : 8;
+			char **new_argv = realloc(argv, cap * sizeof(char *));
+			if (!new_argv) { free(tok); goto fail; }
+			argv = new_argv;
 		}
+		argv[n++] = tok;
 	}
-	if (n == cap) argv = realloc(argv, (n + 1) * sizeof(char *));
+	{
+		char **new_argv = realloc(argv, (n + 1) * sizeof(char *));
+		if (new_argv) argv = new_argv;
+	}
 	if (argv) argv[n] = NULL;
 	return argv;
+
+fail:
+	for (size_t i = 0; i < n; i++) free(argv[i]);
+	free(argv);
+	return NULL;
 }
 
 void run_app(App *a) {
@@ -115,11 +128,13 @@ void run_in_terminal(const char *cmd) {
 		return;
 	}
 	char *argv[6];
+	char *combined = NULL;
 	int n = 0;
 	argv[n++] = (char *)term;
 	if (cmd && *cmd) {
 		size_t need = strlen(cmd) + strlen(shell) + 16;
-		char *combined = malloc(need);
+		combined = malloc(need);
+		if (!combined) return;
 		snprintf(combined, need, "%s; exec %s", cmd, shell);
 		argv[n++] = (char *)term_exec_flag(term);
 		argv[n++] = (char *)shell;
@@ -133,5 +148,6 @@ void run_in_terminal(const char *cmd) {
 		execvp(argv[0], argv);
 		_exit(127);
 	}
+	free(combined);
 	quit = 1;
 }
