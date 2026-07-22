@@ -143,10 +143,16 @@ void run_bang(const char *exec) {
 }
 
 /* Open a new terminal window and run `cmd` inside it (the launcher strips the
- * leading '#' first). The command runs in the user's $SHELL and the terminal
- * stays open afterwards (drops to a shell) so output is visible. An empty
- * command just opens a shell. If no terminal is found we fall back to running
- * the command directly in the user's shell. */
+ * leading '#' first). The command runs and the terminal stays open afterwards
+ * (drops to a shell) so output is visible.  An empty command just opens a
+ * shell.  If no terminal is found we fall back to running the command directly
+ * in the user's shell.
+ *
+ * SECURITY: The user's input is NOT concatenated into a shell string.
+ * Instead it is tokenized (respecting double quotes) and passed as argv to
+ * a shell template:  sh -c 'exec "$@"; exec "$SHELL"' <user-argv>
+ * This ensures the user's input is never interpreted as shell code — it is
+ * passed as positional parameters to exec, which runs it directly. */
 void run_in_terminal(const char *cmd) {
 	const char *term = find_terminal();
 	const char *shell = user_shell();
@@ -160,27 +166,52 @@ void run_in_terminal(const char *cmd) {
 		quit = 1;
 		return;
 	}
-	char *argv[6];
-	char *combined = NULL;
+
+	/* Tokenize the user's command to avoid shell injection.
+	 * We reuse parse_exec: the %% field-code stripping is a no-op for
+	 * user-supplied command strings. */
+	char **user_argv = cmd && *cmd ? parse_exec(cmd) : NULL;
+	int n_user = 0;
+	if (user_argv) while (user_argv[n_user]) n_user++;
+
+	/* Build argv for the terminal emulator:
+	 *   terminal -e sh -c 'exec "$@"; exec "$SHELL"' sh <user-argv...>
+	 *
+	 * The shell template 'exec "$@"; exec "$SHELL"' does:
+	 *   1. exec "$@"   — replaces the shell with the user's command
+	 *   2. exec "$SHELL" — if the command exits, opens a shell (keeps the
+	 *      terminal window open so output remains visible)
+	 *
+	 * Because the user's input is passed via $@ (separate argv entries),
+	 * shell metacharacters in the input are never interpreted as shell code.
+	 */
+	const char *tmpl = "exec \"$@\"; exec \"$SHELL\"";
+	size_t n_argv = 1 + 1 + 1 + 1 + 1 + (size_t)n_user + 1;  /* term, flag, sh, -c, tmpl, sh, user... */
+	char **argv = calloc(n_argv, sizeof(char *));
+	if (!argv) { if (user_argv) { for (int i = 0; i < n_user; i++) free(user_argv[i]); free(user_argv); } return; }
+
 	int n = 0;
 	argv[n++] = (char *)term;
-	if (cmd && *cmd) {
-		size_t need = strlen(cmd) + strlen(shell) + 16;
-		combined = malloc(need);
-		if (!combined) return;
-		snprintf(combined, need, "%s; exec %s", cmd, shell);
-		argv[n++] = (char *)term_exec_flag(term);
-		argv[n++] = (char *)shell;
-		argv[n++] = "-c";
-		argv[n++] = combined;
-	}
+	argv[n++] = (char *)term_exec_flag(term);
+	argv[n++] = (char *)shell;
+	argv[n++] = "-c";
+	argv[n++] = (char *)tmpl;
+	argv[n++] = (char *)shell;  /* $0 for the template */
+	for (int i = 0; i < n_user; i++)
+		argv[n++] = user_argv[i];  /* $1, $2, ... */
 	argv[n] = NULL;
+
 	pid_t pid = fork();
 	if (pid == 0) {
 		setsid();
 		execvp(argv[0], argv);
 		_exit(127);
 	}
-	free(combined);
+
+	free(argv);
+	if (user_argv) {
+		for (int i = 0; i < n_user; i++) free(user_argv[i]);
+		free(user_argv);
+	}
 	quit = 1;
 }
