@@ -58,8 +58,17 @@ void run_app(App *a) {
 	pid_t pid = fork();
 	if (pid == 0) {
 		setsid();
-		if (argv && argv[0]) execvp(argv[0], argv);
-		execl("/bin/sh", "sh", "-c", a->exec, (char *)NULL);
+		if (argv && argv[0]) {
+			execvp(argv[0], argv);
+		} else {
+			/* Nothing to exec — fall through to exit. */
+		}
+		/* Per the FreeDesktop.org specification, the Exec key is not a shell
+		 * command — it must be a valid executable with arguments. If execvp
+		 * fails, we simply exit rather than falling back to sh -c, which
+		 * would introduce a shell-injection vector via malicious .desktop
+		 * files. Desktop entries that require shell features should use
+		 * Exec=sh -c '...' explicitly. */
 		_exit(127);
 	}
 	if (argv) { for (size_t i = 0; argv[i]; i++) free(argv[i]); free(argv); }
