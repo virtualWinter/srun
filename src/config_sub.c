@@ -110,15 +110,17 @@ static char *pick_file_dialog(void) {
 
 	close(pipes[1]);
 
-	/* Non-blocking wait: poll with WNOHANG so we can keep the Wayland
-	 * connection alive (flush pending events) while the dialog is open.
-	 * This avoids being disconnected by the compositor for failing to
-	 * respond to pings during a multi-second file dialog. */
+	/* Poll with WNOHANG while dispatching Wayland events so the
+	 * compositor's pings are answered during the multi-second file
+	 * dialog.  Without this the compositor would disconnect srun for
+	 * failing to respond to pings. */
 	int status;
 	char buf[4096] = {0};
 	ssize_t n = 0;
 	while (waitpid(pid, &status, WNOHANG) != pid) {
-		wl_display_flush(display);
+		/* Process incoming Wayland events (pings, etc.) so the
+		 * compositor doesn't disconnect us. */
+		if (wl_display_dispatch(display) < 0) break;
 		usleep(50000);  /* 50ms — yield CPU so the compositor & dialog run */
 	}
 
