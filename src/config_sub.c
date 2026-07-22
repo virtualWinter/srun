@@ -362,7 +362,7 @@ void config_enter(void) {
 			for (int i = 0; i < ncfg; i++) {
 				if (!strcmp(k, cfields[i].key)) {
 					snprintf(cfields[i].value, sizeof cfields[i].value, "%s", v);
-					snprintf(cfields[i].saved, sizeof cfields[i].saved, "%s", cfields[i].value);
+					memcpy(cfields[i].saved, cfields[i].value, sizeof cfields[i].saved);
 					break;
 				}
 			}
@@ -370,7 +370,7 @@ void config_enter(void) {
 		fclose(f);
 	} else {
 		for (int i = 0; i < ncfg; i++)
-			snprintf(cfields[i].saved, sizeof cfields[i].saved, "%s", cfields[i].value);
+			memcpy(cfields[i].saved, cfields[i].value, sizeof cfields[i].saved);
 	}
 	/* Set input to something that won't filter anything,
 	 * and prompt the render to show "! swm". */
@@ -458,7 +458,7 @@ void config_save_all(void) {
 		fclose(f);
 		if (rename(tmppath, path) == 0) {
 			for (int i = 0; i < ncfg; i++)
-				snprintf(cfields[i].saved, sizeof cfields[i].saved, "%s", cfields[i].value);
+				memcpy(cfields[i].saved, cfields[i].value, sizeof cfields[i].saved);
 			/* swm watches the config directory with inotify and will
 			 * automatically reload settings when swm.conf is closed
 			 * after writing — no SIGUSR1 needed. */
