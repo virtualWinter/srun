@@ -33,7 +33,12 @@ static char *trim(char *s) {
 	return s;
 }
 
+#ifdef TESTING
+/* Exposed for unit tests. */
+int parse_hex(const char *s, Color *c) {
+#else
 static int parse_hex(const char *s, Color *c) {
+#endif
 	if (!s || s[0] != '#') return 0;
 	size_t n = strlen(s + 1);
 	unsigned int r = 0, g = 0, b = 0, a = 255;
@@ -46,7 +51,11 @@ static int parse_hex(const char *s, Color *c) {
 	return 1;
 }
 
+#ifdef TESTING
+void set_value(const char *key, const char *val) {
+#else
 static void set_value(const char *key, const char *val) {
+#endif
 	/* non-colour settings */
 	if (!strcmp(key, "radius")) {
 		int r = atoi(val);

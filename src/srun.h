@@ -91,6 +91,44 @@ extern int    nincludes, incl_cap;
 extern int  repeat_active;
 extern long repeat_at;
 
+/* ----- config sub-menu (3rd level: !swm -> field list) ----- */
+/* config_mode: 0=off, 1=browsing fields, 2=editing a field */
+extern int  config_mode;
+extern int  config_edit_idx;     /* field index being edited */
+void config_enter(void);         /* enter config browsing mode */
+void config_enter_color_picker(void);  /* enter colour picker sub‑mode */
+void config_pick_color(const char *hex);  /* select colour, return to browse */
+void config_commit_edit(void);   /* commit the edit buffer to the field */
+void config_cancel_edit(void);   /* restore saved value */
+void config_save_all(void);      /* write to swm.conf + signal swm */
+void config_update_field_names(void);  /* refresh ->name with current values */
+void cycle_mod(int idx);
+int  config_nfields(void);
+int  config_field_type(int i);
+int  config_handle_enter(int idx);  /* 1=handled, 0=enter text edit */
+int  config_find_idx(const char *key);
+int  config_is_modified(void);
+const char *config_field_label(int i);
+const char *config_field_value(int i);
+const char *config_field_key(int i);
+/* App slots that rebuild() puts into the filtered list.
+ * Allocated dynamically based on the number of config fields;
+ * use config_nfields() for the current count. */
+extern App *config_field_apps;
+extern int config_picker_active;
+
+/* Colour‑picker state (classic HSV square) */
+extern int   cp_r, cp_g, cp_b;
+extern float cp_hue, cp_sat, cp_val;
+extern char  cp_hex[16];
+extern int   cp_hex_len;
+extern int   cp_drag;          /* 0=square, 1=hue-strip */
+int  parse_hex_color(const char *hex, int *r, int *g, int *b);
+void rgb_to_hsv(int r, int g, int b, float *h, float *s, float *v);
+void hsv_to_rgb(float h, float s, float v);
+void config_enter_color_picker(void);
+void config_commit_color_picker(void);
+
 /* ----- prototypes ----- */
 
 /* apps.c */
@@ -104,6 +142,7 @@ void load_config(void);
 /* launch.c */
 void run_app(App *a);
 void run_in_terminal(const char *cmd);
+void run_bang(const char *name);
 
 /* icon.c */
 cairo_surface_t *load_icon(const char *icon);

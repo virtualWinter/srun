@@ -67,4 +67,30 @@ install: $(TARGET)
 uninstall:
 	rm -f $(BINDIR)/$(notdir $(TARGET))
 
-.PHONY: all clean run install uninstall
+# ------------------------------------------------------------------
+# Tests
+# ------------------------------------------------------------------
+TEST_BIN    = $(BUILD_DIR)/test_srun
+
+# All sources recompiled with -DTESTING so internal functions are
+# exposed and main() is excluded.  The test binary links the same
+# libraries as the real build — every symbol is real, no stubs.
+TEST_SRCS   = $(SRCS)
+TEST_OBJS   = $(TEST_SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/test_%.o)
+TEST_OBJS  += $(BUILD_DIR)/test_tests.o
+
+$(BUILD_DIR)/test_%.o: src/%.c $(GEN_H) | $(BUILD_DIR)
+	$(CC) $(subst -O2,-O0,$(CFLAGS)) -DTESTING -c $< -o $@
+
+$(BUILD_DIR)/test_tests.o: test/tests.c $(GEN_H) | $(BUILD_DIR)
+	$(CC) $(subst -O2,-O0,$(CFLAGS)) -DTESTING -Isrc -c $< -o $@
+
+$(TEST_BIN): $(TEST_OBJS) $(BUILD_DIR)/xdg-shell-protocol.o
+	$(CC) $(TEST_OBJS) $(BUILD_DIR)/xdg-shell-protocol.o -o $@ $(LDLIBS)
+
+test-unit: $(TEST_BIN)
+	./$(TEST_BIN)
+
+test: test-unit
+
+.PHONY: all clean run install uninstall test test-unit

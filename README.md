@@ -44,6 +44,17 @@ press Enter to open a terminal and run it. The command runs in your `$SHELL`
 (default `/bin/sh`), and the terminal is chosen automatically (`$TERMINAL`,
 else st, alacritty, kitty, foot, urxvt, xterm, konsole, …).
 
+Type `!` to switch to **config-command** mode: the prompt changes to `!` and
+the list shows built-in settings actions. Currently supported:
+
+| Command          | Action                                    |
+|------------------|-------------------------------------------|
+| `!swm`           | Open a 3rd-level config sub-menu with all swm settings |
+| `!theme`         | Edit colour theme (`~/.config/swm/theme.conf`) |
+| `!wallpaper`     | Browse the wallpaper directory with `bud`    |
+
+Type `!` then filter by name (e.g. `!swm`), press Enter to run the action.
+
 **Mouse**
 
 | Action                        | Result                                  |

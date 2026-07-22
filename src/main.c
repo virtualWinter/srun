@@ -147,6 +147,7 @@ static void surface_init(void) {
 	wl_surface_commit(surface);
 }
 
+#ifndef TESTING
 int main(void) {
 	display = wl_display_connect(NULL);
 	if (!display) {
@@ -199,3 +200,4 @@ int main(void) {
 	}
 	return 0;
 }
+#endif

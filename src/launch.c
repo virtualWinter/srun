@@ -10,7 +10,11 @@
 #include <sys/stat.h>
 
 /* Tokenize a .desktop Exec string (quote-aware), dropping % field codes. */
+#ifdef TESTING
+char **parse_exec(const char *s) {
+#else
 static char **parse_exec(const char *s) {
+#endif
 	char **argv = NULL;
 	size_t n = 0, cap = 0;
 	const char *p = s;
@@ -64,7 +68,11 @@ void run_app(App *a) {
 
 /* ----- terminal detection / spawning ----- */
 
+#ifdef TESTING
+int cmd_exists(const char *cmd) {
+#else
 static int cmd_exists(const char *cmd) {
+#endif
 	if (strchr(cmd, '/')) return access(cmd, X_OK) == 0;
 	const char *path = getenv("PATH");
 	char *dup = strdup(path ? path : "/usr/local/bin:/usr/bin:/bin");
@@ -86,7 +94,11 @@ static const char *terminals[] = {
 };
 
 /* Pick an available terminal emulator, honoring $TERMINAL first. */
+#ifdef TESTING
+const char *find_terminal(void) {
+#else
 static const char *find_terminal(void) {
+#endif
 	const char *t = getenv("TERMINAL");
 	if (t && *t && cmd_exists(t)) return t;
 	for (int i = 0; terminals[i]; i++)
@@ -107,6 +119,18 @@ static const char *term_exec_flag(const char *term) {
 static const char *user_shell(void) {
 	const char *s = getenv("SHELL");
 	return (s && *s) ? s : "/bin/sh";
+}
+
+/* Execute a built-in bang command. The exec string is "!bang:<action>". */
+void run_bang(const char *exec) {
+	if (!exec || strncmp(exec, "!bang:", 6)) return;
+	const char *action = exec + 6;
+
+	if (!strcmp(action, "swm")) {
+		config_enter();
+		return;
+	}
+	quit = 1;
 }
 
 /* Open a new terminal window and run `cmd` inside it (the launcher strips the

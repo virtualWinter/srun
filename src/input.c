@@ -2,6 +2,7 @@
 
 #include "srun.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -11,6 +12,47 @@
 /* ----- selection / pointer state ----- */
 
 static int ptr_x = 0, ptr_y = 0, hover = -1, entered = 0;
+static int cp_dragging = 0;  /* non‑zero while mouse‑button is held on the colour picker */
+
+/* Colour‑picker pointer → HSV update.  Shared geometry with render.c. */
+static void cp_apply_pointer(int px, int py) {
+	int PAD = 8;
+	int avail_h = (H - HEADER_H) - 2 * PAD;
+	int stripe_w = 18;
+	int gap = 6;
+	int sq_size = avail_h;
+	int sq_top = HEADER_H + PAD;
+	int stripe_x = PAD;
+	int sq_x = PAD + stripe_w + gap;
+
+	/* Hue strip. */
+	if (px >= stripe_x && px < stripe_x + stripe_w &&
+	    py >= sq_top && py < sq_top + sq_size) {
+		float h = 360.0f * (py - sq_top) / sq_size;
+		if (h < 0) h = 0;
+		if (h >= 360) h = 359.999f;
+		if (h != cp_hue) {
+			cp_hue = h;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			dirty = 1;
+		}
+		return;
+	}
+	/* Saturation / Value square. */
+	if (px >= sq_x && px < sq_x + sq_size &&
+	    py >= sq_top && py < sq_top + sq_size) {
+		float s = (float)(px - sq_x) / sq_size;
+		float v = 1.0f - (float)(py - sq_top) / sq_size;
+		if (s < 0) s = 0;
+		if (s > 1) s = 1;
+		if (v < 0) v = 0;
+		if (v > 1) v = 1;
+		cp_sat = s;
+		cp_val = v;
+		hsv_to_rgb(cp_hue, cp_sat, cp_val);
+		dirty = 1;
+	}
+}
 
 /* wheel state: discrete notches (mice) take priority; continuous input
  * (trackpads) is accumulated and converted to notches, carrying the
@@ -45,8 +87,165 @@ static void utf8_backspace(void) {
 
 /* Side effect of a keypress; called for the initial press and each repeat. */
 static void key_action(xkb_keysym_t sym, xkb_keycode_t kc) {
+	/* === Colour‑picker mode (config_mode == 3) === */
+	if (config_mode == 3) {
+		if (sym == XKB_KEY_Return || sym == XKB_KEY_KP_Enter) {
+			config_commit_color_picker();
+			rebuild();
+			return;
+		}
+		if (sym == XKB_KEY_Escape) {
+			/* Cancel — return to config browse with original value. */
+			config_mode = 1;
+			snprintf(input, sizeof input, "!swm ");
+			input_len = (int)strlen(input);
+			rebuild();
+			dirty = 1;
+			return;
+		}
+		/* ── HSV adjustments ── */
+		if (sym == XKB_KEY_Up) {
+			cp_val += 0.02f; if (cp_val > 1.0f) cp_val = 1.0f;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			cp_hex[0] = 0; cp_hex_len = 0; dirty = 1; return;
+		}
+		if (sym == XKB_KEY_Down) {
+			cp_val -= 0.02f; if (cp_val < 0.0f) cp_val = 0.0f;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			cp_hex[0] = 0; cp_hex_len = 0; dirty = 1; return;
+		}
+		if (sym == XKB_KEY_Right) {
+			cp_sat += 0.02f; if (cp_sat > 1.0f) cp_sat = 1.0f;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			cp_hex[0] = 0; cp_hex_len = 0; dirty = 1; return;
+		}
+		if (sym == XKB_KEY_Left) {
+			cp_sat -= 0.02f; if (cp_sat < 0.0f) cp_sat = 0.0f;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			cp_hex[0] = 0; cp_hex_len = 0; dirty = 1; return;
+		}
+		/* Home / End: jump S or V to extremes. */
+		if (sym == XKB_KEY_Home) {
+			cp_val = 1.0f; cp_sat = 1.0f;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			cp_hex[0] = 0; cp_hex_len = 0; dirty = 1; return;
+		}
+		if (sym == XKB_KEY_End) {
+			cp_val = 0.0f;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			cp_hex[0] = 0; cp_hex_len = 0; dirty = 1; return;
+		}
+		/* Bracket keys adjust hue. */
+		if (sym == XKB_KEY_bracketleft) {
+			cp_hue -= 1.0f; if (cp_hue < 0.0f) cp_hue += 360.0f;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			cp_hex[0] = 0; cp_hex_len = 0; dirty = 1; return;
+		}
+		if (sym == XKB_KEY_bracketright) {
+			cp_hue += 1.0f; if (cp_hue >= 360.0f) cp_hue -= 360.0f;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			cp_hex[0] = 0; cp_hex_len = 0; dirty = 1; return;
+		}
+		if (sym == XKB_KEY_braceleft) {
+			cp_hue -= 10.0f; if (cp_hue < 0.0f) cp_hue += 360.0f;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			cp_hex[0] = 0; cp_hex_len = 0; dirty = 1; return;
+		}
+		if (sym == XKB_KEY_braceright) {
+			cp_hue += 10.0f; if (cp_hue >= 360.0f) cp_hue -= 360.0f;
+			hsv_to_rgb(cp_hue, cp_sat, cp_val);
+			cp_hex[0] = 0; cp_hex_len = 0; dirty = 1; return;
+		}
+		/* Tab cycles cp_drag between square and hue strip. */
+		if (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab) {
+			cp_drag = !cp_drag;
+			dirty = 1; return;
+		}
+		return;
+	}
+
+	/* === Config editing mode (editing a field value) === */
+	if (config_mode == 2) {
+		if (sym == XKB_KEY_Return || sym == XKB_KEY_KP_Enter) {
+			config_commit_edit();
+			dirty = 1;
+			return;
+		}
+		if (sym == XKB_KEY_Escape) {
+			config_cancel_edit();
+			dirty = 1;
+			return;
+		}
+		if (sym == XKB_KEY_BackSpace || sym == XKB_KEY_Delete) {
+			utf8_backspace(); dirty = 1;
+			return;
+		}
+		char buf[8];
+		int nn = xkb_state_key_get_utf8(xkb_state, kc, buf, sizeof buf);
+		if (nn > 0 && input_len + nn < (int)sizeof(input)) {
+			memcpy(input + input_len, buf, nn);
+			input_len += nn;
+			input[input_len] = 0;
+			dirty = 1;
+		}
+		return;
+	}
+
+	/* === Config browsing mode (field list) === */
+	if (config_mode == 1) {
+		if (sym == XKB_KEY_Return || sym == XKB_KEY_KP_Enter) {
+			if (sel >= 0 && sel < nfiltered) {
+				config_edit_idx = sel;
+				if (config_edit_idx >= 0 && config_edit_idx < config_nfields()) {
+					/* Ask config_sub whether it handles Enter directly
+					 * (mod cycle, bool toggle, file picker) or whether
+					 * we should enter text‑editing mode (num, color). */
+					if (!config_handle_enter(config_edit_idx)) {
+						config_mode = 2;
+						snprintf(input, sizeof input, "%s",
+							config_field_value(config_edit_idx));
+						input_len = (int)strlen(input);
+					}
+					dirty = 1;
+				}
+			}
+			return;
+		}
+		if (sym == XKB_KEY_Escape) {
+			config_mode = 0;
+			snprintf(input, sizeof input, "!");
+			input_len = 1;
+			rebuild();
+			dirty = 1;
+			return;
+		}
+		/* Navigation. */
+		if (sym == XKB_KEY_Up || sym == XKB_KEY_ISO_Left_Tab) {
+			if (nfiltered && sel > 0) { sel--; dirty = 1; } return;
+		}
+		if (sym == XKB_KEY_Down || sym == XKB_KEY_Tab) {
+			if (nfiltered && sel < nfiltered - 1) { sel++; dirty = 1; } return;
+		}
+		/* Ctrl+S — manual save (auto‑save-on‑commit also saves). */
+		if (sym == XKB_KEY_s && xkb_state &&
+				xkb_state_mod_name_is_active(xkb_state,
+					XKB_MOD_NAME_CTRL, XKB_STATE_MODS_DEPRESSED)) {
+			config_save_all();
+			dirty = 1;
+			return;
+		}
+		return;
+	}
+
+	/* === Normal mode (app launcher / bang / terminal) === */
 	if (sym == XKB_KEY_Return || sym == XKB_KEY_KP_Enter) {
-		if (input_len > 0 && input[0] == '#') {
+		if (input_len > 0 && input[0] == '!') {
+			if (nfiltered > 0) {
+				run_bang(filtered[sel]->exec);
+			} else {
+				quit = 1;
+			}
+		} else if (input_len > 0 && input[0] == '#') {
 			if (nfiltered > 0)
 				run_in_terminal(filtered[sel]->name);  /* run selected binary */
 			else if (input_len > 1)
@@ -57,7 +256,7 @@ static void key_action(xkb_keysym_t sym, xkb_keycode_t kc) {
 		return;
 	}
 	if (sym == XKB_KEY_Escape) {
-		if (input_len > 0 && input[0] == '#') {   /* back out of bin mode */
+		if (input_len > 0 && (input[0] == '#' || input[0] == '!')) {   /* back out of special mode */
 			input[0] = 0; input_len = 0; rebuild();
 			return;
 		}
@@ -130,8 +329,9 @@ static void kb_enter(void *data, struct wl_keyboard *kb, uint32_t serial,
 static void kb_leave(void *data, struct wl_keyboard *kb, uint32_t serial,
 		struct wl_surface *surface) {
 	(void)data; (void)kb; (void)serial; (void)surface;
-	/* lost keyboard focus -> user clicked/focused another window */
-	if (kbfocus) quit = 1;
+	/* Lost keyboard focus — don't quit if we're in config mode
+	 * (the user might be interacting with a file‑picker dialog). */
+	if (kbfocus && !config_mode) quit = 1;
 	kbfocus = 0;
 }
 static void kb_modifiers(void *data, struct wl_keyboard *kb, uint32_t serial,
@@ -203,7 +403,7 @@ static void ptr_enter(void *data, struct wl_pointer *p, uint32_t serial,
 	entered = 1;
 	ptr_x = wl_fixed_to_int(sx);
 	ptr_y = wl_fixed_to_int(sy);
-	if (update_hover()) dirty = 1;
+	if (config_mode != 3 && update_hover()) dirty = 1;
 }
 static void ptr_leave(void *data, struct wl_pointer *p, uint32_t serial,
 		struct wl_surface *surface) {
@@ -216,15 +416,28 @@ static void ptr_motion(void *data, struct wl_pointer *p, uint32_t time,
 	(void)data; (void)p; (void)time;
 	ptr_x = wl_fixed_to_int(sx);
 	ptr_y = wl_fixed_to_int(sy);
-	if (update_hover()) dirty = 1;
+	if (config_mode == 3) {
+		if (cp_dragging) cp_apply_pointer(ptr_x, ptr_y);
+	} else {
+		if (update_hover()) dirty = 1;
+	}
 }
 static void ptr_button(void *data, struct wl_pointer *p, uint32_t serial,
 		uint32_t time, uint32_t button, uint32_t state) {
 	(void)data; (void)p; (void)serial; (void)time;
-	if (state == WL_POINTER_BUTTON_STATE_PRESSED && button == BTN_LEFT) {
-		update_hover();
-		if (hover >= 0 && hover < nfiltered)
-			run_app(filtered[hover]);
+	if (button == BTN_LEFT) {
+		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+			if (config_mode == 3) {
+				cp_dragging = 1;
+				cp_apply_pointer(ptr_x, ptr_y);
+			} else {
+				update_hover();
+				if (hover >= 0 && hover < nfiltered && !config_mode)
+					run_app(filtered[hover]);
+			}
+		} else if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+			cp_dragging = 0;
+		}
 	}
 }
 /* Scroll the list by `steps` notches (negative = up). The selection tracks

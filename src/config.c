@@ -23,7 +23,11 @@
 char **excludes = NULL; int nexcludes = 0, excl_cap = 0;
 char **includes = NULL; int nincludes = 0, incl_cap = 0;
 
+#ifdef TESTING
+void add_pattern(char ***list, int *n, int *cap, const char *s) {
+#else
 static void add_pattern(char ***list, int *n, int *cap, const char *s) {
+#endif
 	while (*s == ' ' || *s == '\t') s++;
 	size_t L = strlen(s);
 	while (L && (s[L-1] == ' ' || s[L-1] == '\t')) L--;
@@ -45,6 +49,16 @@ static void ensure_dir(const char *path) {
 	char *p = strrchr(tmp, '/');
 	if (p) { *p = 0; mkdir(tmp, 0755); }
 }
+
+#ifdef TESTING
+/* Reset the pattern lists for testing. */
+void test_reset_config(void) {
+	for (int i = 0; i < nexcludes; i++) free(excludes[i]);
+	free(excludes); excludes = NULL; nexcludes = 0; excl_cap = 0;
+	for (int i = 0; i < nincludes; i++) free(includes[i]);
+	free(includes); includes = NULL; nincludes = 0; incl_cap = 0;
+}
+#endif
 
 /* Config sections */
 enum { SECTION_NONE, SECTION_FILTER };

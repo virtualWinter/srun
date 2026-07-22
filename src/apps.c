@@ -26,8 +26,21 @@ int    input_len = 0;
 static App   *bins = NULL;
 static int    nbins = 0, bins_cap = 0, bins_loaded = 0;
 
+/* ----- built-in bang (!) commands (used in '!' run-mode) ----- */
+
+/* We store bang commands as ordinary App entries whose exec field starts with
+ * "!bang:" followed by an action name. run_bang() matches the action name
+ * and performs the built-in behaviour. */
+static void add_bang_apps(void) {
+	app_add("swm", "!bang:swm", "Configure swm (theme, colours, wallpaper)", NULL);
+}
+
 /* case-insensitive substring match */
+#ifdef TESTING
+int ci_find(const char *hay, const char *needle) {
+#else
 static int ci_find(const char *hay, const char *needle) {
+#endif
 	if (!hay) return 0;
 	if (!*needle) return 1;
 	for (; *hay; hay++) {
@@ -41,7 +54,11 @@ static int ci_find(const char *hay, const char *needle) {
 }
 
 /* case-insensitive substring match against name, .desktop basename, or exec */
+#ifdef TESTING
+int app_matches(const char *exec, const char *name, const char *desktop, const char *pat) {
+#else
 static int app_matches(const char *exec, const char *name, const char *desktop, const char *pat) {
+#endif
 	if (ci_find(name, pat)) return 1;
 	if (ci_find(desktop, pat)) return 1;
 	if (exec) {
@@ -157,6 +174,9 @@ void load_apps(void) {
 	if (napps == 0) { /* fallback so the launcher is never empty */
 		app_add("No apps...",      "echo heh?", NULL, NULL);
 	}
+
+	/* Add built-in bang commands (!swm). */
+	add_bang_apps();
 }
 
 /* ----- filtering ----- */
@@ -213,6 +233,42 @@ void rebuild(void) {
 	nfiltered = 0;
 	sel = 0; scroll = 0;
 	dirty = 1;
+
+	/* Config browsing mode: show config fields as list items. */
+	if (config_mode == 1) {
+		int nf = config_nfields();
+		config_update_field_names();
+		filtered = malloc((size_t)nf * sizeof(App *));
+		if (!filtered) { nfiltered = 0; return; }
+		for (int i = 0; i < nf; i++)
+			filtered[nfiltered++] = &config_field_apps[i];
+		return;
+	}
+	/* Config editing mode: same list (non-interactive aside from the header). */
+	if (config_mode == 2) {
+		int nf = config_nfields();
+		config_update_field_names();
+		filtered = malloc((size_t)nf * sizeof(App *));
+		if (!filtered) { nfiltered = 0; return; }
+		for (int i = 0; i < nf; i++)
+			filtered[nfiltered++] = &config_field_apps[i];
+		return;
+	}
+
+	/* '!' prefix => show built-in bang commands (config actions). */
+	if (input_len > 0 && input[0] == '!') {
+		const char *q = input + 1;
+		filtered = malloc((size_t)napps * sizeof(App *));
+		if (!filtered) { nfiltered = 0; return; }
+		for (int i = 0; i < napps; i++) {
+			if (!strncmp(apps[i].exec, "!bang:", 6)) {
+				const char *action = apps[i].exec + 6;
+				if (!*q || ci_find(apps[i].name, q) || ci_find(action, q))
+					filtered[nfiltered++] = &apps[i];
+			}
+		}
+		return;
+	}
 
 	/* '#' prefix => browse executables in $PATH (run-in-terminal mode) */
 	if (input_len > 0 && input[0] == '#') {
